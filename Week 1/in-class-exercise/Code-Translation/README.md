@@ -14,7 +14,7 @@ Inclues two folders:
 ## code_translation.py
 Run this python file to generate the code translation.
 
-# How to Run:
+# How to Run Translation:
 ```
 python code_translation.py --user-prompt-file prompts/user-prompt.txt --system-prompt-file prompts/system-prompt.txt
 ```
@@ -32,10 +32,37 @@ python -m unittest discover -s test -v
 
 - change only the prompts file and nothing else.
 
-# Required packages
+### Required packages
 
 ```
 langchain
 langchain-ollama
 ollama
+```
+
+# Steps
+
+Step 1: create a virtual environment:
+
+```
+python -m venv venv
+```
+
+Step 2:  install the packages:
+```
+pip install -r requirements.txt
+```
+
+Step 3:  update the prompts as required
+
+Step 4: run code_translation.py
+```
+python code_translation.py --user-prompt-file prompts/user-prompt.txt --system-prompt-file prompts/system-prompt.txt
+```
+
+Step 5: run tests:
+
+Go to `code_translation` folder. Then run:
+```
+python -m unittest discover -s test -v
 ```
