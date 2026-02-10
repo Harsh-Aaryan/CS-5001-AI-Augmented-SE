@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import subprocess
+import json
 from pathlib import Path
-from typing import Tuple
+from typing import Any, Dict, Tuple
 
 from .utils import clamp
 
@@ -27,6 +28,11 @@ class Tools:
         p = self._safe(rel_path)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
+
+    def write_json(self, rel_path: str, payload: Dict[str, Any]) -> None:
+        p = self._safe(rel_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     def run(self, cmd: str) -> Tuple[bool, str]:
         proc = subprocess.run(cmd, cwd=self.repo_path, shell=True, capture_output=True, text=True)
