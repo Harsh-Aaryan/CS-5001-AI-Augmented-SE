@@ -42,7 +42,7 @@ def main() -> None:
         help="Sampling temperature (default: 0.0)",
     )
     # Kept for backward compatibility with existing configs; not used by the two-step flow.
-    p.add_argument("--max-iters", type=int, default=6, help="(Unused) Max iterations for test improvement")
+    p.add_argument("--max-iters", type=int, default=3, help="Max iterations for test improvement")
     p.add_argument("--verbose", action="store_true", help="Verbose output")
 
     sub = p.add_subparsers(dest="cmd", required=True)

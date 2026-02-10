@@ -7,23 +7,10 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .llm import OllamaLLM
-from .prompts import improve_tests_prompt, program_prompt, tests_prompt, scaffold_prompt
+from .prompts import program_prompt, tests_prompt, scaffold_prompt
 from .tools import Tools
 from .types import AgentConfig, RunResult
 from .utils import clamp, parse_coverage_total, strip_code_fences
-
-
-def _missing_lines_summary(cov_json: Dict, module_rel: str) -> str:
-    files = cov_json.get("files", {})
-    target = module_rel.replace("\\", "/")
-    matches = [k for k in files.keys() if k.replace("\\", "/").endswith(target)]
-    if not matches:
-        return "[No per-file coverage details found for target module.]"
-    entry = files[matches[0]]
-    missing = entry.get("missing_lines", []) or []
-    if not missing:
-        return "[none]"
-    return "Missing lines: " + ", ".join(str(x) for x in missing)
 
 
 class Agent:
@@ -33,11 +20,18 @@ class Agent:
         self.tools = Tools(self.repo)
         self.llm = OllamaLLM(model=cfg.model, host=cfg.host, temperature=cfg.temperature)
 
+    def _log(self, message: Any) -> None:
+        if self.cfg.verbose:
+            print(message)
+
     def create_program(self, desc: str, module_path: str) -> RunResult:
         existing = self.tools.read(module_path)
-        raw = self.llm.generate(program_prompt(desc, existing))
+        prompt = program_prompt(desc, existing)
+        self._log(prompt)
+        raw = self.llm.generate(prompt)
+        self._log(raw)
         content = strip_code_fences(raw)
-        print(content)
+        self._log(content)
         if not content:
             return RunResult(False, "Model returned empty module after sanitization.")
         self.tools.write(module_path, content + "\n")
@@ -55,7 +49,10 @@ class Agent:
             out_dir_norm = "."
 
         tree = self.tools.list_tree(out_dir_norm, max_files=200, max_chars=12000)
-        raw = self.llm.generate(scaffold_prompt(desc, out_dir_norm, tree))
+        prompt = scaffold_prompt(desc, out_dir_norm, tree)
+        self._log(prompt)
+        raw = self.llm.generate(prompt)
+        self._log(raw)
 
         # Scaffold must be JSON. If the model violates this, fail fast.
         try:
@@ -135,9 +132,12 @@ class Agent:
     def create_tests(self, desc: str, module_path: str, tests_path: str) -> RunResult:
         module_code = self.tools.read(module_path)
         existing_tests = self.tools.read(tests_path)
-        raw = self.llm.generate(tests_prompt(desc, module_path, module_code, existing_tests))
+        prompt = tests_prompt(desc, module_path, module_code, existing_tests)
+        self._log(prompt)
+        raw = self.llm.generate(prompt)
+        self._log(raw)
         content = strip_code_fences(raw)
-        print(content)
+        self._log(content)
         if not content:
             return RunResult(False, "Model returned empty tests after sanitization.")
         self.tools.write(tests_path, content + "\n")
@@ -149,9 +149,10 @@ class Agent:
     def _run_tests_with_coverage(self) -> Dict[str, Any]:
         cov_json_path = self.repo / ".coverage.json"
         cmd = f"coverage run -m pytest -q && coverage json -o {cov_json_path.name}"
+        self._log(cmd)
         ok, out = self.tools.run(cmd)
-        print(ok)
-        print(out)
+        self._log(ok)
+        self._log(out)
         total: float = 0.0
         data: Dict[str, Any] = {}
         if cov_json_path.exists():
@@ -176,7 +177,7 @@ class Agent:
     ) -> RunResult:
         result = self._run_tests_with_coverage()
         cov_data = result.get("coverage_data", {}) or {}
-        print(result)
+        self._log(result)
         module_summary: Dict[str, Any] = {}
         if module_path:
             module_summary = self._module_coverage_summary(cov_data, module_path)
@@ -266,56 +267,6 @@ class Agent:
             f"{module_line}\n"
             f"## Pytest output\n\n"
             f"```\n{out}\n```\n"
-        )
-
-    def improve_tests_to_target(
-        self,
-        desc: str,
-        module_path: str,
-        tests_path: str,
-        max_iters: int,
-        target_coverage: float,
-    ) -> RunResult:
-        for i in range(1, max_iters + 1):
-            res = self._run_tests_with_coverage()
-            ok = bool(res.get("ok"))
-            out = str(res.get("pytest_output") or "")
-            total = float(res.get("total_coverage_percent") or 0.0)
-            cov_data = res.get("coverage_data", {}) or {}
-            missing = _missing_lines_summary(cov_data, module_path)
-            print(ok, out, total, cov_data)
-            if ok and total >= target_coverage:
-                return RunResult(
-                    True,
-                    f"Tests passed and coverage reached {total:.1f}%, target was {target_coverage:.1f}%. Iterations used: {i}.",
-                    coverage=total,
-                )
-
-            module_code = self.tools.read(module_path)
-            current_tests = self.tools.read(tests_path)
-            prompt = improve_tests_prompt(desc, module_path, module_code, current_tests, out, missing)
-
-            raw = self.llm.generate(prompt)
-            content = strip_code_fences(raw)
-
-            if not content:
-                return RunResult(
-                    False,
-                    f"Iteration {i}: model returned empty tests after sanitization. Coverage={total:.1f}%.",
-                    coverage=total,
-                )
-
-            self.tools.write(tests_path, content + "\n")
-
-        res = self._run_tests_with_coverage()
-        ok = bool(res.get("ok"))
-        out = str(res.get("pytest_output") or "")
-        total = float(res.get("total_coverage_percent") or 0.0)
-        status = "passed" if ok else "failed"
-        return RunResult(
-            False,
-            f"Stopped at max iterations. Final tests {status}. Coverage={total:.1f}%, target was {target_coverage:.1f}%.\nLast output:\n{out}",
-            coverage=total,
         )
 
     def commit_and_push(self, message: str, push: bool) -> RunResult:

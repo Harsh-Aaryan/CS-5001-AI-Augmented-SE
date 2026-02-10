@@ -11,8 +11,8 @@ class OllamaLLM:
     host: str = "http://localhost:11434"
     temperature: float = 0.0
     timeout_s: int = 120
+
     def generate(self, prompt: str) -> str:
-        print(prompt)
         url = f"{self.host}/api/generate"
         payload = {
             "model": self.model,

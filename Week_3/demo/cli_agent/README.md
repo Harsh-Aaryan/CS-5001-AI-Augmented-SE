@@ -227,3 +227,4 @@ cca --repo output/demo_flask commit \
 ## Help
 
 If a command does not appear in `cca --help`, it does not exist.
+Add `--verbose` to print logs after repo info.

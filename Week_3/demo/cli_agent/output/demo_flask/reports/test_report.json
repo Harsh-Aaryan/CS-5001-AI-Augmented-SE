@@ -1,0 +1,17 @@
+{
+  "agent_config": {
+    "host": "http://localhost:11434",
+    "max_iters": 3,
+    "model": "devstral-small-2:24b-cloud",
+    "repo": "output/demo_flask",
+    "temperature": 0.0,
+    "verbose": true
+  },
+  "command": "coverage run -m pytest -q && coverage json -o .coverage.json",
+  "module_coverage": {},
+  "module_path": null,
+  "pytest_output": "....FF                                                                   [100%]\n=================================== FAILURES ===================================\n_________________________ test_echo_post_endpoint_form _________________________\n\nclient = <FlaskClient <Flask 'src.flask'>>\n\n    def test_echo_post_endpoint_form(client):\n        response = client.post('/echo', data={'key1': 'value1', 'key2': 'value2'})\n>       assert response.status_code == 200\nE       assert 415 == 200\nE        +  where 415 = <WrapperTestResponse streamed [415 UNSUPPORTED MEDIA TYPE]>.status_code\n\ntests/test_flask.py:39: AssertionError\n________________________ test_echo_post_endpoint_empty _________________________\n\nclient = <FlaskClient <Flask 'src.flask'>>\n\n    def test_echo_post_endpoint_empty(client):\n        response = client.post('/echo')\n>       assert response.status_code == 200\nE       assert 415 == 200\nE        +  where 415 = <WrapperTestResponse streamed [415 UNSUPPORTED MEDIA TYPE]>.status_code\n\ntests/test_flask.py:46: AssertionError\n=========================== short test summary info ============================\nFAILED tests/test_flask.py::test_echo_post_endpoint_form - assert 415 == 200\nFAILED tests/test_flask.py::test_echo_post_endpoint_empty - assert 415 == 200\n2 failed, 4 passed in 0.30s",
+  "tests_passed": false,
+  "timestamp_utc": "2026-02-10T11:04:21.288103+00:00",
+  "total_coverage_percent": 0.0
+}
