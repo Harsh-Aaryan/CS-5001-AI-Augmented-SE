@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .agent import Agent
 from .llm import OllamaLLM
+from .prompt_manager import PromptManager
 from .types import AgentConfig
 from .utils import ensure_repo_path
 
@@ -64,21 +65,25 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    # Create command
+    # Create command (planning/codegen choices loaded from prompt YAMLs)
+    pm = PromptManager()
+    planning_choices = pm.list_variants("planning")
+    codegen_choices = pm.list_variants("code_generation")
+
     c = sub.add_parser("create", help="Create a module")
     c.add_argument("description", help="What to create")
     c.add_argument("--module", help="Module path (default: src/main.py)")
     c.add_argument(
         "--planning",
-        choices=['default', 'detailed', 'minimal'],
-        default='default',
-        help="Planning prompt variant"
+        choices=planning_choices,
+        default="default",
+        help="Planning prompt variant (default: default)",
     )
     c.add_argument(
         "--codegen",
-        choices=['default', 'documented', 'minimal'],
-        default='default',
-        help="Code generation prompt variant"
+        choices=codegen_choices,
+        default="default",
+        help="Code generation prompt variant (default: default)",
     )
 
     # List prompts command

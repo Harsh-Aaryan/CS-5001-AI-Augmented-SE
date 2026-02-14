@@ -1,3 +1,4 @@
+
 metadata:
   description: "Prompts for generating code"
   version: "1.0.0"
@@ -8,52 +9,151 @@ variants:
   default:
     description: "Standard code generation prompt"
     template: |
-      You are a software engineer. Write a single Python module that satisfies the description.
-      Follow the plan.
-      Return ONLY the full module content.
-      Rules:
-      - Output raw Python only
-      - No Markdown
-      - No code fences
-      - No explanations
+      You are a software engineer. Write a single Python module that satisfies the description and follows the plan below.
 
-      TARGET MODULE PATH: {module_path}
+      Instructions:
+      - Implement exactly what the plan describes; write the code that will be saved to the module path given.
+      - Return ONLY the full module content: raw Python only. No Markdown, no code fences, no explanations before or after the code.
 
-      PLAN:
+      ---
+      MODULE PATH (write your code so it is suitable for this file; the agent will save your output here):
+      - Output file path (e.g. src/main.py). Your response will be written here as-is.
+      - No markdown or fences—only the Python source.
+      {module_path}
+
+      ---
+      PLAN (follow these implementation steps in order):
+      - Numbered steps from the planning phase. Implement each in your code.
       {plan}
 
-      DESCRIPTION:
+      ---
+      DESCRIPTION (original user request; ensure your code fulfills this):
+      - User's natural language request. Your module must satisfy it.
       {desc}
 
   documented:
-    description: "Generate well-documented code"
+    description: "Generate well documented code"
     template: |
-      You are a senior software engineer. Create a well-documented Python module.
-      
-      Path: {module_path}
-      
-      Implementation Plan:
+      You are a senior software engineer. Create a well documented Python module.
+
+      Instructions:
+      - Follow the plan and description below. Write code that will be saved to the given module path.
+      - Add comprehensive docstrings , type hints for all functions, inline comments for complex logic, and clear variable names.
+      - Return ONLY raw Python code; no markdown, no fences, no explanatory text outside the code.
+
+      ---
+      MODULE PATH (output file where this module will be saved):
+      - Target path for the module. Include docstrings and type hints suitable for this file.
+      {module_path}
+
+      ---
+      PLAN (implementation steps to follow):
+      - Implementation steps; follow them and document your code .
       {plan}
-      
-      Requirements:
+
+      ---
+      DESCRIPTION (user request; your code must satisfy this):
+      - What to build; document the module so it clearly fulfills this.
       {desc}
-      
-      Standards:
-      - Comprehensive docstrings (Google style)
-      - Type hints for all functions
-      - Inline comments for complex logic
-      - Clear variable names
-      - Return ONLY raw Python code
-      - No markdown formatting
 
   minimal:
     description: "Generate minimal, concise code"
     template: |
-      Write minimal Python code for: {desc}
-      
-      Follow this plan:
+      Write minimal, concise Python code.
+
+      Instructions:
+      - Follow the plan and description. Output will be saved to the module path. Raw Python only; no comments unless critical, no markdown or fences.
+
+      ---
+      MODULE PATH (file to write; your output will be saved here):
+      - Single file path; keep code minimal and focused.
+      {module_path}
+
+      ---
+      PLAN (follow these steps):
+      - Ordered steps; implement them with minimal comments.
       {plan}
-      
-      Target: {module_path}
-      
-      Rules: Raw Python only, no comments unless critical, no markdown.
+
+      ---
+      DESCRIPTION (user request):
+      - User request; satisfy it with minimal, readable code.
+      {desc}
+
+  streamlit_app:
+    description: "Prompt for creating a Streamlit app (interactive web app)."
+    template: |
+      You are a software engineer. Build a single-file Streamlit application that implements the requirements below.
+
+      Instructions:
+      - Follow the plan and description. Produce a complete, runnable module to be saved at the module path. Output raw Python only (no Markdown or fences). Keep UI simple. Use standard library plus `streamlit` only; note dependencies in comments if needed.
+      - The app must be runnable with `streamlit run <module_path>`. Include interactive inputs, validation, and clear output or visualizations. If external data is needed, add a small mock dataset generator inside the module.
+
+      ---
+      MODULE PATH (file where the Streamlit app will be saved; run with: streamlit run {module_path}):
+      - Single-file app path. App must run via: streamlit run <this path>.
+      - Include only streamlit + standard library; mock data inside the file if needed.
+      {module_path}
+
+      ---
+      PLAN (implementation steps to follow):
+      - UI layout, inputs, data flow, and validation steps; implement them in one file.
+      {plan}
+
+      ---
+      DESCRIPTION (user request for the app):
+      - What the Streamlit app should do; implement it in this single module.
+      {desc}
+
+  algorithmic_function:
+    description: "Prompt for implementing a small algorithmic component or data structure."
+    template: |
+      You are an experienced engineer. Implement a small algorithmic component 
+      (data structure or utility function) matching the description.
+
+      Instructions:
+      - Follow the plan and description. Primary output goes to the module path; you may describe multiple files (e.g. module, tests, README) but the agent will save one module—put the main implementation in the output.
+       Use clear function/class names, type hints for public APIs, standard library only.
+        No external dependencies. If you include tests or README text, 
+        still lead with the single Python module for the module path; the agent writes one file.
+      - Return ONLY the main module content as raw Python (no Markdown or fences). No explanations outside code.
+
+      ---
+      MODULE PATH (main file to generate; your Python code will be saved here):
+      - Primary module path. Agent writes one file; put the main implementation here.
+      - Standard library only; clear class/function names and type hints.
+      {module_path}
+
+      ---
+      PLAN (implementation steps to follow):
+      - Interface, complexity, edge cases, tests; implement the main module per plan.
+      {plan}
+
+      ---
+      DESCRIPTION (user request; algorithm or data structure to implement):
+      - e.g. LRU cache, rate limiter; implement exactly this in the module above.
+      {desc}
+
+  flask_rest_app:
+    description: "Prompt for a Flask web app exposing a small REST API."
+    template: |
+      You are a senior backend engineer. Create a small Flask application with a REST API that fulfills the requirements below.
+
+      Instructions:
+      - Follow the plan and description. The agent saves one module to the module path—output the main Flask app code so the app is runnable with `flask run`. Include clear endpoints, in-memory persistence (list/dict), CRUD, type hints, and error handling. Return only the Python code for the main module; no Markdown, no fences, no explanations outside code comments.
+      - If you mention README or requirements.txt, the agent still writes one file; put the complete runnable Flask app in your response.
+
+      ---
+      MODULE PATH (file where the Flask app will be saved; run with: flask run):
+      - Entry point for the Flask app. Agent writes one file; make it runnable with flask run.
+      - Include routes, in-memory storage (list/dict), and error handling in this file.
+      {module_path}
+
+      ---
+      PLAN (implementation steps to follow):
+      - Endpoints, data model, and error handling from the plan; implement in this module.
+      {plan}
+
+      ---
+      DESCRIPTION (user request; REST API or app to build):
+      - e.g. To-Do CRUD API; implement all required endpoints and behavior here.
+      {desc}

@@ -1,3 +1,4 @@
+
 metadata:
   description: "Prompts for creating implementation plans"
   version: "1.0.0"
@@ -9,45 +10,122 @@ variants:
     description: "Standard planning prompt for code generation"
     template: |
       You are a senior software engineer. Create a short, actionable implementation plan with ordered steps.
-      
-      Constraints:
-      - Keep the solution minimal and readable
-      - Assume standard library only unless the description requires otherwise
-      - Do not write code yet
-      - Output plain text only
 
-      TARGET MODULE PATH: {module_path}
+      Instructions:
+      - Use the description below to decide what to build.
+      - Your output will be used in the next phase to generate code; so list clear, ordered steps only.
+      - Do not write code. Output plain text only (no Markdown, no code blocks).
+      - Keep the solution minimal and readable. Assume standard library only unless the description requires otherwise.
 
-      DESCRIPTION:
+      ---
+      MODULE PATH (the file path where the generated code will be written; use this to tailor the plan):
+      - Where the code will be saved (e.g. src/main.py).
+      - Use it to scope the plan (single file vs package).
+      {module_path}
+
+      ---
+      DESCRIPTION (the user's request; create a plan that fulfills this):
+      - Natural language summary of what to build.
+      - Your plan must fully address this.
       {desc}
 
   detailed:
     description: "More detailed planning with architecture considerations"
     template: |
       You are a senior software architect. Create a comprehensive implementation plan.
-      
-      TARGET MODULE PATH: {module_path}
-      
-      REQUIREMENTS:
+
+      Instructions:
+      - Read the module path and description below. Your plan will guide the code-generation phase.
+      - Output numbered steps only; do not write any code or Markdown.
+      - Your plan must include: (1) architecture overview, (2) key components and responsibilities, (3) data structures, (4) function/class signatures (names and purposes only), (5) dependencies (prefer standard library), (6) edge cases, (7) testing considerations.
+
+      ---
+      MODULE PATH (where the code will be written; use it to scope the plan):
+      - Output file path for the generated code.
+      - Plan structure and components should match this target.
+      {module_path}
+
+      ---
+      DESCRIPTION (user request; the plan must satisfy this):
+      - What the user wants built.
+      - Include architecture, components, and edge cases that satisfy it.
       {desc}
-      
-      Your plan should include:
-      1. Architecture overview
-      2. Key components and their responsibilities
-      3. Data structures needed
-      4. Function signatures
-      5. Dependencies (prefer standard library)
-      6. Edge cases to handle
-      7. Testing considerations
-      
-      Output as numbered steps in plain text.
 
   minimal:
     description: "Quick planning for simple tasks"
     template: |
-      Create a brief plan (3-5 steps) for implementing:
+      Create a brief implementation plan (3-5 numbered steps).
+
+      Instructions:
+      - Use the module path and description below. Output 3-5 ordered steps, plain text only. Do not write code.
+      - Keep it simple and actionable.
+
+      ---
+      MODULE PATH (output file path for the generated code):
+      - Single file path; keep the plan to one main module.
+      {module_path}
+
+      ---
+      DESCRIPTION (what the user wants to build):
+      - User request; 3-5 steps should be enough to cover it.
       {desc}
-      
-      Target file: {module_path}
-      
-      Keep it simple and actionable.
+
+  streamlit:
+    description: "Planning template for a Streamlit app"
+    template: |
+      You are a senior software engineer. Create a concise implementation plan (4-7 numbered steps) for a Streamlit application.
+
+      Instructions:
+      - Plan must cover: UI layout, user inputs, data flow, where to mock or load data, and basic validation.
+      - Output plain text only; do not write code. Use the module path and description below.
+
+      ---
+      MODULE PATH (file where the Streamlit app will be written):
+      - Target path for the single-file Streamlit app.
+      - Plan UI layout and data flow for this file.
+      {module_path}
+
+      ---
+      DESCRIPTION (user request for the Streamlit app):
+      - What the Streamlit app should do (inputs, views, data).
+      {desc}
+
+  algorithmic:
+    description: "Planning template for algorithmic/data-structure tasks"
+    template: |
+      You are a senior software engineer. Produce an actionable plan (3-6 numbered steps) for implementing the algorithmic component.
+
+      Instructions:
+      - Plan must include: public interface (functions/classes), time/space complexity targets, edge cases, and a simple test plan.
+      - Output plain text only; do not write code. Use the module path and description below.
+
+      ---
+      MODULE PATH (file where the implementation will be written):
+      - Where the algorithm or data structure code will live.
+      - Plan the public API and tests for this module.
+      {module_path}
+
+      ---
+      DESCRIPTION (user request; algorithm or data structure to implement):
+      - e.g. LRU cache, rate limiter, message queue; plan interfaces and complexity.
+      {desc}
+
+  flask_rest:
+    description: "Planning template for a small Flask REST API"
+    template: |
+      You are a senior software engineer. Create a step-by-step plan (4-8 numbered steps) to build a minimal Flask REST API.
+
+      Instructions:
+      - Plan must include: endpoints with HTTP methods, in-memory data model, error cases, and basic testing/invocation steps.
+      - Output plain text only; do not write code. Use the module path and description below.
+
+      ---
+      MODULE PATH (file where the Flask app will be written):
+      - Target path for the Flask app entry point.
+      - Plan routes and in-memory storage for this file.
+      {module_path}
+
+      ---
+      DESCRIPTION (user request; REST API or app to build):
+      - e.g. To-Do API, CRUD service; plan endpoints and data model.
+      {desc}
