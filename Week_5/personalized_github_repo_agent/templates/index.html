@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Personalized GitHub Repository Agent</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <main class="container">
+    <h1>Personalized GitHub Repository Agent</h1>
+    <p class="sub">Roles: Reviewer, Planner, Writer, Gatekeeper (with reflection + approval gate)</p>
+
+    <section class="card">
+      <h2>1) Review Changes</h2>
+      <div class="grid">
+        <label>Base Branch (optional)
+          <input id="reviewBase" placeholder="main" />
+        </label>
+        <label>Commit Range (optional)
+          <input id="reviewRange" placeholder="HEAD~3..HEAD" />
+        </label>
+      </div>
+      <button id="btnReview">Run Review</button>
+      <pre id="reviewOut" class="output"></pre>
+    </section>
+
+    <section class="card">
+      <h2>2) Draft Issue/PR (Approval Required)</h2>
+      <div class="grid">
+        <label>Kind
+          <select id="draftKind">
+            <option value="issue">Issue</option>
+            <option value="pr">PR</option>
+          </select>
+        </label>
+        <label>Source
+          <select id="draftSource">
+            <option value="instruction">Explicit Instruction</option>
+            <option value="review">From Review</option>
+          </select>
+        </label>
+      </div>
+      <label>Review ID (when source=review)
+        <input id="draftReviewId" placeholder="rvw_xxx" />
+      </label>
+      <label>Instruction (when source=instruction)
+        <input id="draftInstruction" placeholder="Create an issue for missing input validation in login API." />
+      </label>
+      <button id="btnDraft">Create Draft</button>
+      <pre id="draftOut" class="output"></pre>
+
+      <div class="actions">
+        <label>Draft ID for approval
+          <input id="approveDraftId" placeholder="drf_xxx" />
+        </label>
+        <button id="btnApproveYes">Approve YES (Create)</button>
+        <button id="btnApproveNo" class="secondary">Approve NO (Abort)</button>
+      </div>
+      <pre id="approveOut" class="output"></pre>
+    </section>
+
+    <section class="card">
+      <h2>3) Improve Existing Issue/PR</h2>
+      <div class="grid">
+        <label>Kind
+          <select id="improveKind">
+            <option value="issue">Issue</option>
+            <option value="pr">PR</option>
+          </select>
+        </label>
+        <label>Number
+          <input id="improveNumber" type="number" min="1" placeholder="42" />
+        </label>
+      </div>
+      <button id="btnImprove">Improve</button>
+      <pre id="improveOut" class="output"></pre>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
