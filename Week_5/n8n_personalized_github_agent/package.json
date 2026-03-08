@@ -1,0 +1,15 @@
+{
+  "name": "week5-n8n-personalized-github-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local n8n host + workflow for Week 5 personalized GitHub repo agent",
+  "scripts": {
+    "start": "n8n start",
+    "start:env": "n8n start --tunnel=false",
+    "import:workflow": "n8n import:workflow --input ./workflows/personalized_github_multi_agent.json"
+  },
+  "dependencies": {
+    "n8n": "^1.109.0",
+    "sqlite3": "^5.1.7"
+  }
+}

@@ -1,0 +1,159 @@
+{
+  "name": "Personalized GitHub Repo Agent (Split Agents)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "personalized-github-agent-split",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node_webhook",
+      "name": "API Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "webhookId": "personalized-github-agent-split"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const payload = $json.body || {};\nconst action = String(payload.action || payload.endpoint || '').trim().toLowerCase();\n\nconst env = {\n  owner: $env.GITHUB_OWNER || '',\n  repo: $env.GITHUB_REPO || '',\n  token: $env.GITHUB_TOKEN || '',\n  apiBase: ($env.GITHUB_API_BASE || 'https://api.github.com').replace(/\\\/$/, ''),\n  defaultBaseBranch: $env.AGENT_BASE_BRANCH || 'main',\n  defaultHeadBranch: $env.AGENT_HEAD_BRANCH || ''\n};\n\nfunction ensureStore() {\n  const store = $getWorkflowStaticData('global');\n  if (!store.reviews) store.reviews = {};\n  if (!store.drafts) store.drafts = {};\n  if (!store.outcomes) store.outcomes = {};\n  return store;\n}\n\nfunction makeId(prefix) {\n  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;\n}\n\nfunction requireGithubConfig() {\n  if (!env.owner || !env.repo) throw new Error('GITHUB_OWNER and GITHUB_REPO are required.');\n  if (!env.token) throw new Error('GITHUB_TOKEN is required.');\n}\n\nasync function githubRequest({ method = 'GET', path, body }) {\n  requireGithubConfig();\n  const response = await fetch(`${env.apiBase}/repos/${env.owner}/${env.repo}${path}`, {\n    method,\n    headers: {\n      'Authorization': `Bearer ${env.token}`,\n      'Accept': 'application/vnd.github+json',\n      'X-GitHub-Api-Version': '2022-11-28',\n      'Content-Type': 'application/json'\n    },\n    body: body ? JSON.stringify(body) : undefined\n  });\n\n  let data;\n  try { data = await response.json(); } catch (_e) { data = { message: await response.text() }; }\n  if (!response.ok) throw new Error(data?.message || `GitHub API error (${response.status})`);\n  return data;\n}\n\nfunction assessRisk(files, totalAdded, totalDeleted) {\n  let score = 0;\n  const total = totalAdded + totalDeleted;\n  if (total > 350) score += 2;\n  else if (total > 120) score += 1;\n\n  const criticalMarkers = ['auth', 'payment', 'security', 'gateway', 'api', 'config'];\n  if (files.some((path) => criticalMarkers.some((m) => path.toLowerCase().includes(m)))) score += 2;\n  if (files.length > 10) score += 1;\n\n  if (score >= 4) return 'high';\n  if (score >= 2) return 'medium';\n  return 'low';\n}\n\nfunction classifyChange(files, evidenceSnippets) {\n  const lowerFiles = files.join(' ').toLowerCase();\n  const lowerDiff = evidenceSnippets.join(' ').toLowerCase();\n  if (/fix|bug|error/.test(lowerDiff)) return 'bugfix';\n  if (/refactor/.test(lowerDiff)) return 'refactor';\n  if (/readme|\\.md|docs\\//.test(lowerFiles)) return 'docs';\n  if (/test|spec/.test(lowerFiles)) return 'test';\n  return 'feature';\n}\n\nfunction detectIssues(files, evidenceSnippets) {\n  const lower = evidenceSnippets.join(' ').toLowerCase();\n  const issues = [];\n  if (lower.includes('todo') || lower.includes('fixme')) issues.push('Diff contains TODO/FIXME markers that may indicate unfinished work.');\n  if (lower.includes('except:') || lower.includes('except exception')) issues.push('Broad exception handling detected; consider narrowing exception types.');\n  const hasCode = files.some((p) => /\\.(py|js|ts|tsx|jsx|go|java|cs|rb)$/i.test(p));\n  const hasTest = files.some((p) => /test|spec/i.test(p));\n  if (hasCode && !hasTest) issues.push('Code changes detected without corresponding test file updates.');\n  if (lower.includes('password') || lower.includes('token')) issues.push('Sensitive credential handling appears in diff; verify secure storage and masking.');\n  return issues;\n}\n\ntry {\n  const ctx = { payload, action, env, store: ensureStore(), makeId };\n\n  if (action === 'review') {\n    const commitRange = String(payload.commit_range || '').trim();\n    const baseBranch = String(payload.base_branch || env.defaultBaseBranch).trim();\n    const headBranch = String(payload.head_branch || env.defaultHeadBranch).trim();\n\n    let compareRef = '';\n    if (commitRange.includes('...')) compareRef = commitRange;\n    else if (commitRange.includes('..')) compareRef = commitRange.replace('..', '...');\n    else if (baseBranch && headBranch) compareRef = `${baseBranch}...${headBranch}`;\n    else throw new Error('For review, provide commit_range (base...head) or both base_branch and head_branch.');\n\n    const compare = await githubRequest({ method: 'GET', path: `/compare/${compareRef}` });\n    const files = (compare.files || []).map((f) => f.filename);\n\n    const evidence = [];\n    for (const file of (compare.files || []).slice(0, 8)) {\n      const patch = String(file.patch || '').split('\\n');\n      for (const line of patch) {\n        if (line.startsWith('+') && !line.startsWith('+++')) {\n          const snippet = line.slice(1).trim();\n          if (snippet) evidence.push({ source: file.filename, type: 'added', snippet: snippet.slice(0, 200) });\n        } else if (line.startsWith('-') && !line.startsWith('---')) {\n          const snippet = line.slice(1).trim();\n          if (snippet) evidence.push({ source: file.filename, type: 'removed', snippet: snippet.slice(0, 200) });\n        }\n        if (evidence.length >= 8) break;\n      }\n      if (evidence.length >= 8) break;\n    }\n\n    const totalAdded = (compare.files || []).reduce((acc, f) => acc + Number(f.additions || 0), 0);\n    const totalDeleted = (compare.files || []).reduce((acc, f) => acc + Number(f.deletions || 0), 0);\n    const evidenceSnippets = evidence.map((e) => e.snippet);\n\n    ctx.review = {\n      input: { base_branch: baseBranch || null, head_branch: headBranch || null, commit_range: commitRange || null },\n      reference: compareRef,\n      change_type: classifyChange(files, evidenceSnippets),\n      risk: assessRisk(files, totalAdded, totalDeleted),\n      stats: { files_changed: files.length, total_added: totalAdded, total_deleted: totalDeleted },\n      files,\n      numstat: (compare.files || []).map((f) => ({ path: f.filename, added: Number(f.additions || 0), deleted: Number(f.deletions || 0) })),\n      potential_issues: detectIssues(files, evidenceSnippets),\n      evidence\n    };\n  }\n\n  if (action === 'improve') {\n    const kind = String(payload.kind || 'issue').toLowerCase();\n    const number = Number(payload.number || 0);\n    if (!number || number <= 0) throw new Error('number must be > 0');\n\n    let current;\n    if (kind === 'issue') current = await githubRequest({ method: 'GET', path: `/issues/${number}` });\n    else if (kind === 'pr') current = await githubRequest({ method: 'GET', path: `/pulls/${number}` });\n    else throw new Error('kind must be issue or pr');\n\n    const source = { title: String(current.title || ''), body: String(current.body || '') };\n    const findings = [];\n    if (source.title.trim().length < 8) findings.push('Title is too short to communicate scope clearly.');\n    if (!/acceptance criteria/i.test(source.body)) findings.push('Acceptance criteria are missing or not explicit.');\n    if (!/evidence/i.test(source.body)) findings.push('Evidence section is missing.');\n    if (!/risk/i.test(source.body)) findings.push('Risk level is missing.');\n    if (!findings.length) findings.push('No major clarity gaps detected.');\n\n    ctx.improve = { kind, number, findings, source };\n  }\n\n  return [{ json: ctx }];\n} catch (err) {\n  return [{ json: { action, payload, env, result: { ok: false, error: String(err?.message || err) } } }];\n}"      },
+      "id": "node_reviewer",
+      "name": "Reviewer Agent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const json = { ...$json };\n\nfunction plannerDecision(review) {\n  const issues = review.potential_issues || [];\n  const risk = review.risk || 'low';\n  const changeType = review.change_type || 'feature';\n\n  let action = 'no_action';\n  let reason = 'Diff appears low-risk and does not show clear issues requiring tracking.';\n\n  if (issues.length > 0) {\n    action = 'create_issue';\n    reason = 'Potential quality/safety gaps were found in diff evidence.';\n  } else if ((risk === 'high' || risk === 'medium') && ['feature', 'bugfix', 'refactor'].includes(changeType)) {\n    action = 'create_pr';\n    reason = 'Meaningful change with non-trivial risk should be tracked with PR context and test plan.';\n  }\n\n  return { action, reason, evidence_used: (review.evidence || []).slice(0, 3) };\n}\n\nif (json.result?.ok === false) return [{ json }];\n\nif (json.action === 'review' && json.review) {\n  const plan = plannerDecision(json.review);\n  const reviewId = json.makeId('rvw');\n  json.store.reviews[reviewId] = { review: json.review, plan };\n  json.result = { ok: true, review_id: reviewId, review: json.review, plan };\n}\n\nreturn [{ json }];"      },
+      "id": "node_planner",
+      "name": "Planner Agent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const json = { ...$json };\n\nfunction buildIssueDraft({ instruction, review }) {\n  let title = 'Issue: follow-up improvements from repository review';\n  let problem = 'Potential reliability and maintainability concerns were detected in recent changes.';\n  let risk = 'medium';\n  const evidenceItems = [];\n\n  if (review) {\n    risk = review.risk || 'medium';\n    for (const item of (review.evidence || []).slice(0, 5)) evidenceItems.push(`- ${item.source}: ${item.snippet}`);\n    if ((review.potential_issues || []).length) problem = review.potential_issues.map((x) => `- ${x}`).join('\\n');\n  }\n\n  if (instruction) {\n    const firstLine = instruction.split(/\\r?\\n/)[0].trim();\n    if (firstLine) title = firstLine.slice(0, 120);\n    problem = instruction;\n  }\n\n  const evidenceBlock = evidenceItems.length ? evidenceItems.join('\\n') : '- Review evidence will be attached during implementation.';\n  const body = `## Problem Description\\n${problem}\\n\\n## Evidence\\n${evidenceBlock}\\n\\n## Acceptance Criteria\\n- Root cause is addressed with a minimal and testable change.\\n- Regression risk is covered by tests or documented manual checks.\\n- Any security or validation gaps are explicitly handled.\\n\\n## Risk Level\\n- ${risk}`;\n  return { title, body };\n}\n\nfunction buildPrDraft({ instruction, review, baseBranch, headBranch }) {\n  let title = 'PR: repository improvements from agent review';\n  let summary = 'Implements targeted improvements based on repository analysis.';\n  let risk = 'medium';\n  let files = [];\n\n  if (review) {\n    risk = review.risk || 'medium';\n    files = review.files || [];\n    const stats = review.stats || {};\n    summary = `Change type: ${review.change_type}. Diff stats: +${stats.total_added || 0} /-${stats.total_deleted || 0}.`;\n  }\n\n  if (instruction) {\n    const firstLine = instruction.split(/\\r?\\n/)[0].trim();\n    if (firstLine) title = firstLine.slice(0, 120);\n    summary = instruction;\n  }\n\n  const filesList = files.slice(0, 15).map((p) => `- ${p}`).join('\\n') || '- To be confirmed';\n  const body = `## Summary\\n${summary}\\n\\n## Files Affected\\n${filesList}\\n\\n## Evidence\\n- Based on diff-derived review context and risk analysis.\\n\\n## Behavior Change\\n- Improves repository quality and/or maintainability with scoped updates.\\n\\n## Test Plan\\n- Run unit/integration tests covering touched modules.\\n- Execute manual sanity check for the main user flow.\\n\\n## Risk Level\\n- ${risk}`;\n\n  return { title, body, head: headBranch, base: baseBranch };\n}\n\nif (json.result?.ok === false) return [{ json }];\n\nif (json.action === 'draft') {\n  const payload = json.payload || {};\n  const kind = String(payload.kind || 'issue').toLowerCase();\n  const source = String(payload.source || 'instruction').toLowerCase();\n  const instruction = String(payload.instruction || '').trim();\n  const reviewId = payload.review_id ? String(payload.review_id) : '';\n\n  let review = null;\n  if (source === 'review') {\n    if (!reviewId) throw new Error('review_id is required when source=review');\n    const rec = json.store.reviews[reviewId];\n    if (!rec) throw new Error('review_id not found');\n    review = rec.review;\n  }\n\n  if (kind === 'issue') {\n    json.draftCtx = { kind, source, instruction, review_id: reviewId || null, draft: buildIssueDraft({ instruction, review }), review };\n  } else if (kind === 'pr') {\n    const baseBranch = String(payload.base_branch || json.env.defaultBaseBranch || 'main');\n    const headBranch = String(payload.head_branch || json.env.defaultHeadBranch || 'main');\n    json.draftCtx = {\n      kind, source, instruction, review_id: reviewId || null,\n      draft: buildPrDraft({ instruction, review, baseBranch, headBranch }),\n      review\n    };\n  } else {\n    throw new Error('kind must be issue or pr');\n  }\n}\n\nif (json.action === 'improve' && json.improve) {\n  const kind = json.improve.kind;\n  const source = json.improve.source;\n  const criteriaLabel = kind === 'pr' ? 'Test Plan' : 'Acceptance Criteria';\n  const suggestedBody = `## Problem / Summary\\n${source.body.slice(0, 800) || 'Clarify the objective and expected outcome.'}\\n\\n## Evidence\\n- Link concrete logs, diff snippets, or behavior examples.\\n\\n## ${criteriaLabel}\\n- Define measurable completion conditions.\\n- Add clear validation steps.\\n\\n## Risk Level\\n- medium`;\n  json.suggested = {\n    title: source.title || `${kind.toUpperCase()} #${json.improve.number}: improved title`,\n    body: suggestedBody,\n    critique: json.improve.findings.map((f) => `- ${f}`).join('\\n')\n  };\n}\n\nreturn [{ json }];"      },
+      "id": "node_writer",
+      "name": "Writer Agent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        940,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const json = { ...$json };\n\nfunction requireGithubConfig(env) {\n  if (!env.owner || !env.repo) throw new Error('GITHUB_OWNER and GITHUB_REPO are required.');\n  if (!env.token) throw new Error('GITHUB_TOKEN is required.');\n}\n\nasync function githubRequest(env, { method = 'GET', path, body }) {\n  requireGithubConfig(env);\n  const response = await fetch(`${env.apiBase}/repos/${env.owner}/${env.repo}${path}`, {\n    method,\n    headers: {\n      'Authorization': `Bearer ${env.token}`,\n      'Accept': 'application/vnd.github+json',\n      'X-GitHub-Api-Version': '2022-11-28',\n      'Content-Type': 'application/json'\n    },\n    body: body ? JSON.stringify(body) : undefined\n  });\n\n  let data;\n  try { data = await response.json(); } catch (_e) { data = { message: await response.text() }; }\n  if (!response.ok) throw new Error(data?.message || `GitHub API error (${response.status})`);\n  return data;\n}\n\nfunction reflectionCheck(kind, draft, review) {\n  const findings = [];\n  const title = String(draft.title || '').trim();\n  const body = String(draft.body || '').trim();\n\n  if (!title) findings.push('Missing title.');\n  if (!body) findings.push('Missing body.');\n  if (!/evidence/i.test(body)) findings.push('Missing evidence section.');\n  if (kind === 'pr' && !/test plan/i.test(body)) findings.push('Missing test plan section.');\n  if (!/risk level/i.test(body)) findings.push('Missing risk level section.');\n  if (review && (!review.evidence || !review.evidence.length)) findings.push('Review context has no supporting diff evidence.');\n\n  return {\n    verdict: findings.length ? 'FAIL' : 'PASS',\n    checks: {\n      unsupported_claims: review ? 'PASS' : 'UNKNOWN',\n      missing_evidence: /evidence/i.test(body) ? 'PASS' : 'FAIL',\n      missing_tests: kind === 'issue' || /test plan/i.test(body) ? 'PASS' : 'FAIL',\n      policy_violations: 'PASS'\n    },\n    findings\n  };\n}\n\ntry {\n  if (json.result?.ok === false) return [{ json }];\n\n  if (json.action === 'draft' && json.draftCtx) {\n    const rec = json.draftCtx;\n    const reflection = reflectionCheck(rec.kind, rec.draft, rec.review);\n    const draftId = json.makeId('drf');\n\n    json.store.drafts[draftId] = {\n      kind: rec.kind,\n      source: rec.source,\n      instruction: rec.instruction,\n      review_id: rec.review_id,\n      draft: rec.draft,\n      reflection,\n      status: 'pending_approval'\n    };\n\n    json.result = { ok: true, draft_id: draftId, approval_required: true, draft: rec.draft, reflection };\n  }\n\n  if (json.action === 'approve') {\n    const payload = json.payload || {};\n    const draftId = String(payload.draft_id || '').trim();\n    const approve = Boolean(payload.approve);\n\n    if (!draftId) throw new Error('draft_id is required');\n    const record = json.store.drafts[draftId];\n    if (!record) throw new Error('draft_id not found');\n\n    if (!approve) {\n      record.status = 'rejected';\n      json.result = { ok: true, message: 'Draft rejected. No changes made.' };\n      return [{ json }];\n    }\n\n    if ((record.reflection || {}).verdict !== 'PASS') {\n      json.result = { ok: false, message: 'Reflection verdict: FAIL. Revision required before creation.', reflection: record.reflection };\n      return [{ json }];\n    }\n\n    if (record.kind === 'issue') {\n      const created = await githubRequest(json.env, { method: 'POST', path: '/issues', body: { title: record.draft.title, body: record.draft.body } });\n      const out = { kind: 'issue', number: created.number, url: created.html_url };\n      record.status = 'created';\n      record.created = out;\n      json.store.outcomes[draftId] = out;\n      json.result = { ok: true, message: 'Created successfully.', created: out };\n      return [{ json }];\n    }\n\n    if (record.kind === 'pr') {\n      const created = await githubRequest(json.env, {\n        method: 'POST',\n        path: '/pulls',\n        body: { title: record.draft.title, body: record.draft.body, head: record.draft.head, base: record.draft.base, draft: true }\n      });\n      const out = { kind: 'pr', number: created.number, url: created.html_url };\n      record.status = 'created';\n      record.created = out;\n      json.store.outcomes[draftId] = out;\n      json.result = { ok: true, message: 'Created successfully.', created: out };\n      return [{ json }];\n    }\n\n    throw new Error(`Unsupported draft kind: ${record.kind}`);\n  }\n\n  if (json.action === 'improve' && json.improve && json.suggested) {\n    json.result = {\n      ok: true,\n      critique: { kind: json.improve.kind, number: json.improve.number, findings: json.improve.findings, source: json.improve.source },\n      suggested: json.suggested,\n      reflection: {\n        verdict: 'PASS',\n        checks: { unsupported_claims: 'PASS', missing_evidence: 'PASS', missing_tests: json.improve.kind === 'issue' ? 'PASS' : 'UNKNOWN', policy_violations: 'PASS' },\n        findings: []\n      }\n    };\n  }\n\n  if (!json.result) {\n    json.result = { ok: false, error: 'Unsupported action. Use one of: review, draft, approve, improve.' };\n  }\n\n  return [{ json }];\n} catch (err) {\n  json.result = { ok: false, error: String(err?.message || err) };\n  return [{ json }];\n}"      },
+      "id": "node_gatekeeper",
+      "name": "Gatekeeper Agent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json.result || $json}}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "node_response",
+      "name": "Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1420,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "API Webhook": {
+      "main": [
+        [
+          {
+            "node": "Reviewer Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reviewer Agent": {
+      "main": [
+        [
+          {
+            "node": "Planner Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Planner Agent": {
+      "main": [
+        [
+          {
+            "node": "Writer Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Writer Agent": {
+      "main": [
+        [
+          {
+            "node": "Gatekeeper Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gatekeeper Agent": {
+      "main": [
+        [
+          {
+            "node": "Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "versionId": "823a6f03-6e35-4d95-9346-0678e6c9d7ac",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "id": "personalized_github_agent_split",
+  "tags": []
+}

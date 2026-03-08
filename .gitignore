@@ -136,6 +136,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
 .envrc
 .venv
 env/
@@ -143,6 +144,13 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+!.env.example
+!**/.env.example
+
+# Node / n8n dependencies and local runtime state
+node_modules/
+.n8n/
+Week_5/n8n_personalized_github_agent/node_modules/
 
 # Spyder project settings
 .spyderproject
@@ -205,4 +213,5 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+Week_5/n8n_personalized_github_agent/.env.example
 Week_5/personalized_github_repo_agent/.env.example
